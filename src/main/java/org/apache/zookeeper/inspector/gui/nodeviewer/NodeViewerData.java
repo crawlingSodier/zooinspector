@@ -6,9 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -20,6 +20,7 @@ package org.apache.zookeeper.inspector.gui.nodeviewer;
 import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.net.URLDecoder;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
@@ -30,6 +31,7 @@ import javax.swing.JTextPane;
 import javax.swing.JToolBar;
 import javax.swing.SwingWorker;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.zookeeper.inspector.ZooInspector;
 import org.apache.zookeeper.inspector.gui.IconResource;
 import org.apache.zookeeper.inspector.logger.LoggerFactory;
@@ -54,7 +56,7 @@ public class NodeViewerData extends ZooInspectorNodeViewer {
                 .setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         this.add(scroller, BorderLayout.CENTER);
         this.add(this.toolbar, BorderLayout.NORTH);
-        JButton saveButton = new JButton(ZooInspector.iconResource.get(IconResource.ICON_SAVE,""));
+        JButton saveButton = new JButton(ZooInspector.iconResource.get(IconResource.ICON_SAVE, ""));
         saveButton.addActionListener(new ActionListener() {
 
             public void actionPerformed(ActionEvent e) {
@@ -76,7 +78,7 @@ public class NodeViewerData extends ZooInspectorNodeViewer {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see
      * org.apache.zookeeper.inspector.gui.nodeviewer.ZooInspectorNodeViewer#
      * getTitle()
@@ -88,7 +90,7 @@ public class NodeViewerData extends ZooInspectorNodeViewer {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see
      * org.apache.zookeeper.inspector.gui.nodeviewer.ZooInspectorNodeViewer#
      * nodeSelectionChanged(java.util.Set)
@@ -119,7 +121,46 @@ public class NodeViewerData extends ZooInspectorNodeViewer {
                                 "Error retrieving data for node: "
                                         + NodeViewerData.this.selectedNode, e);
                     }
-                    NodeViewerData.this.dataArea.setText(data);
+                    String nodeName = NodeViewerData.this.selectedNode;
+                    try {
+                        // 将zk中取出的json字符串数据进行美化输出
+                        ObjectMapper mapper = new ObjectMapper();
+                        Object obj = mapper.readValue(data, Object.class);
+                        data = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(obj);
+                    } catch (Exception e) {
+                        // 不是json,则解析dubbo格式
+                    }
+                    // 输出选中节点名称： 并进行url解码
+                    StringBuilder stringBuilder = new StringBuilder();
+                    stringBuilder.append("  原节点名： \r\n").append(nodeName).append("\r\n");
+                    String nodeNameDecoded = nodeName;
+                    try {
+                        nodeNameDecoded = URLDecoder.decode(nodeName, "UTF-8");
+                        stringBuilder.append("  节点名URL解码值： \r\n").append(nodeNameDecoded).append("\r\n");
+                    } catch (Exception e) {
+                        stringBuilder.append("  节点名URL转码失败：\r\n");
+                    }
+                    try {
+                        // 节点名称拆解参数（根据包含？ 为标识，第二段作为参数解析）
+                        if (nodeNameDecoded.contains("?")) {
+                            String[] urlInfo = nodeNameDecoded.split("\\?");
+                            stringBuilder.append("   路径： \r\n       ").append(urlInfo[0]).append("\r\n");
+                            String params = urlInfo[1];
+                            String[] paramList = params.split("&");
+                            stringBuilder.append("      <参数名称>         ").append("<参数值>").append("\r\n");
+                            for (String param : paramList) {
+                                String[] split = param.split("=");
+                                if (split.length >= 2) {
+                                    stringBuilder.append("     ").append(split[0]).append("       ").append(split[1]).append("\r\n");
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        // ignore
+                    }
+                    stringBuilder.append("\r\n");
+                    stringBuilder.append("节点值：\r\n").append(data);
+                    NodeViewerData.this.dataArea.setText(stringBuilder.toString());
                 }
             };
             worker.execute();
@@ -128,7 +169,7 @@ public class NodeViewerData extends ZooInspectorNodeViewer {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see
      * org.apache.zookeeper.inspector.gui.nodeviewer.ZooInspectorNodeViewer#
      * setZooInspectorManager
